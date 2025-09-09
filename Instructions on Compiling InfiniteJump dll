@@ -1,0 +1,65 @@
+##Making the InfiniteJump.dll for Silksong:
+
+STEP 1: Create a folder in your Documents directory (or where ever you want) named "ref"
+
+STEP 2: Copy the following files into the ref folder:
+
+--These files will be located in your Silksong_Data/core and /Managed Directories. You will need 5 dll files total:
+
+ - In Silksong/core (BepInEx.dll)
+ - In Silksong/Managed (UnityEngine.dll ; UnityEngine.CoreModule.dll ; UnityEngine.Physics2DModule.dll ; UnityEngine.InputLegacyModule.dll)
+ 
+ --- DO NOT CUT AND PASTE -- Simply COPY the files and paste them in the ref folder. ---
+ 
+STEP 3: Create the .cs and CSPROJ files. Either download them from my GitHub or you can do it yourself by opening a terminal and using GEDIT. Once GEDIT is open copy the code from my InfiniteJumpCS text paste it and save it to your "ref" folder as InfiniteJump.cs. The CSPROJ is just a text file, so either just use mine from the GitHub or if you want to make your own, open a text editor like Notes and copy the code from my file and paste it in. Then save it to your "ref" folder as InfiniteJunmpCSPROJ.
+ 
+ I offer two options because of some you may want to tweak the code I am using to your own likings.
+ 
+STEP 4: Verify everything you need is in the "ref" folder:
+ 
+ - InfiniteJump.cs
+ - InfiniteJumpCSPROJ
+ - BepInEx.dll
+ - UnityEngine.dll
+ - UnityEngine.CoreModule.dll
+ - UnityEngine.Physics2DModule.dll
+ - UnityEngine.InputLegacyModule.dll
+ 
+ ***Once verified move on to step 5****
+ 
+STEP 5: If you don't already have it, install .Net SDK
+ 
+ In your terminal copy and paste these commands: 
+ 
+wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
+sudo dpkg -i packages-microsoft-prod.deb
+rm packages-microsoft-prod.deb
+
+sudo apt update
+sudo apt install -y dotnet-sdk-8.0
+
+#Check your dotnet versios using the command: dotnet --version
+It should 8.0.x
+
+STEP 6 Compile your mod:
+
+In your terminal cd to your ref folder and in the terminal type the command: dotnet build -c Release
+
+Once it's finished compiling, your InfiniteJump.dll should be in /refs/bin/Release/net472/ folder.
+
+Copy and paste your dll into Silksong/BepInEx/plugins/ folder and start the game. 
+
+***You MAY have to start the game and then exit out and start again to allow the mod to hook to Hornet's body (so to speak).
+
+****PLEASE NOTE**** While this is a harmless mod, I can't do "tech support" if it doesn't work. So, please uderstand, this worked for me and I am simply sharing with you all in the spirit of Linux.
+
+
+
+
+
+
+
+ 
+  
+
+

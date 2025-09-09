@@ -1,0 +1,227 @@
+InfiniteJump.cs using gedit
+
+using BepInEx;
+using BepInEx.Configuration;
+using UnityEngine;
+using System.Linq;
+using System.Collections.Generic;
+
+namespace AvaMods.Silksong
+{
+    [BepInPlugin("ava.mods.silksong.infinitejump", "Infinite Jump", "1.3.0")]
+    public class InfiniteJump : BaseUnityPlugin
+    {
+        // Config
+        private ConfigEntry<bool> enabledToggle;
+        private ConfigEntry<KeyCode> toggleKey;
+        private ConfigEntry<KeyCode> jumpKey;
+        private ConfigEntry<bool> holdToFly;
+        private ConfigEntry<float> jumpVelocity;
+        private ConfigEntry<float> flyTickVelocity;
+        private ConfigEntry<float> debounceSeconds;
+        private ConfigEntry<string> hookByName;
+        private ConfigEntry<bool> dumpAtStart;
+
+        // Hotkeys to manage hook
+        private ConfigEntry<KeyCode> nextTargetKey;
+        private ConfigEntry<KeyCode> prevTargetKey;
+        private ConfigEntry<KeyCode> statusKey;
+
+        // Runtime
+        private Rigidbody2D rb;
+        private float debounce;
+        private List<Rigidbody2D> candidates = new List<Rigidbody2D>();
+        private int candIndex = -1;
+        private bool dumped = false;
+
+        private static readonly string[] NameHints = { "player", "hornet", "hero", "character", "avatar" };
+        private static readonly string[] TypeHints = { "player", "character", "controller", "movement" };
+
+        private void Awake()
+        {
+            enabledToggle   = Config.Bind("General", "Enabled", true, "Master on/off.");
+            toggleKey       = Config.Bind("General", "ToggleKey", KeyCode.F8, "Toggle the mod.");
+            jumpKey         = Config.Bind("Controls", "JumpKey", KeyCode.Space, "Keyboard jump key to also listen for.");
+            holdToFly       = Config.Bind("Mode", "HoldToFly", false, "Hold jump to hover.");
+            jumpVelocity    = Config.Bind("Tuning", "JumpVelocity", 18f, "Upward velocity per press.");
+            flyTickVelocity = Config.Bind("Tuning", "FlyTickVelocity", 6f, "Minimum upward speed while holding.");
+            debounceSeconds = Config.Bind("Tuning", "DebounceSeconds", 0.06f, "Debounce for press mode.");
+
+            hookByName      = Config.Bind("Hook", "HookByName", "", "Prefer objects whose name contains this.");
+            dumpAtStart     = Config.Bind("Hook", "DumpCandidates", true, "Log candidates on first scan.");
+
+            nextTargetKey   = Config.Bind("HookKeys", "NextTargetKey", KeyCode.F9, "Cycle to next candidate.");
+            prevTargetKey   = Config.Bind("HookKeys", "PrevTargetKey", KeyCode.F7, "Cycle to previous candidate.");
+            statusKey       = Config.Bind("HookKeys", "StatusKey", KeyCode.F10, "Log current hook.");
+
+            Logger.LogInfo("[InfiniteJump] Loaded.");
+        }
+
+        private void Update()
+        {
+            if (Input.GetKeyDown(toggleKey.Value))
+            {
+                enabledToggle.Value = !enabledToggle.Value;
+                Logger.LogInfo("[InfiniteJump] Enabled = " + enabledToggle.Value);
+            }
+            if (!enabledToggle.Value) return;
+
+            if (!rb) TryHookPlayer();
+
+            if (Input.GetKeyDown(nextTargetKey.Value)) CycleCandidate(+1);
+            if (Input.GetKeyDown(prevTargetKey.Value)) CycleCandidate(-1);
+            if (Input.GetKeyDown(statusKey.Value))
+                Logger.LogInfo("[InfiniteJump] Hooked = " + (rb ? rb.gameObject.name : "<none>") +
+                               " (cand " + (candIndex + 1) + "/" + candidates.Count + ")");
+
+            if (!rb) return;
+
+            debounce -= Time.deltaTime;
+
+            if (holdToFly.Value)
+            {
+                if (IsJumpHeld())
+                {
+                    var v = rb.linearVelocity;
+                    rb.linearVelocity = new Vector2(v.x, Mathf.Max(v.y, flyTickVelocity.Value));
+                }
+            }
+            else
+            {
+                if (IsJumpPressed() && debounce <= 0f)
+                {
+                    var v = rb.linearVelocity;
+                    rb.linearVelocity = new Vector2(v.x, jumpVelocity.Value);
+                    debounce = debounceSeconds.Value;
+                }
+            }
+        }
+
+        // ===== Input helpers: keyboard OR any joystick button =====
+        private static bool AnyJoystickButtonDown()
+        {
+            // Scan a reasonable range of joystick buttons (0..19 covers Xbox/DualShock/8BitDo in XInput)
+            for (int i = 0; i <= 19; i++)
+            {
+                var kc = (KeyCode)((int)KeyCode.JoystickButton0 + i);
+                if (Input.GetKeyDown(kc)) return true;
+            }
+            return false;
+        }
+
+        private static bool AnyJoystickButtonHeld()
+        {
+            for (int i = 0; i <= 19; i++)
+            {
+                var kc = (KeyCode)((int)KeyCode.JoystickButton0 + i);
+                if (Input.GetKey(kc)) return true;
+            }
+            return false;
+        }
+
+        private bool IsJumpPressed()
+        {
+            // Keyboard press OR any joystick button press
+            return Input.GetKeyDown(jumpKey.Value) || AnyJoystickButtonDown();
+        }
+
+        private bool IsJumpHeld()
+        {
+            // Keyboard held OR any joystick button held
+            return Input.GetKey(jumpKey.Value) || AnyJoystickButtonHeld();
+        }
+
+        // ===== Hook logic =====
+        private void TryHookPlayer()
+        {
+            RefreshCandidates();
+            if (candidates.Count == 0) { rb = null; return; }
+
+            // 1) User-specified name hint
+            if (!string.IsNullOrWhiteSpace(hookByName.Value))
+            {
+                var idx = candidates.FindIndex(b => b && b.gameObject.name.ToLower().Contains(hookByName.Value.ToLower()));
+                if (idx >= 0) { SetHook(idx); return; }
+            }
+
+            // 2) Common name hints
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                var name = candidates[i].gameObject.name.ToLower();
+                if (NameHints.Any(h => name.Contains(h))) { SetHook(i); return; }
+            }
+
+            // 3) Component type hints
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                var types = candidates[i].gameObject.GetComponents<MonoBehaviour>()
+                                .Where(m => m != null)
+                                .Select(m => m.GetType().Name.ToLower());
+                if (types.Any(t => TypeHints.Any(h => t.Contains(h)))) { SetHook(i); return; }
+            }
+
+            // 4) Fallback
+            SetHook(0);
+        }
+
+        private void RefreshCandidates()
+        {
+            var found = Object.FindObjectsByType<Rigidbody2D>(FindObjectsInactive.Exclude, FindObjectsSortMode.None)
+                              .Where(b => b != null && b.gameObject.activeInHierarchy && b.bodyType == RigidbodyType2D.Dynamic)
+                              .ToList();
+
+            candidates = found.OrderByDescending(b => b.linearVelocity.magnitude)
+                              .ThenBy(b => b.gameObject.name)
+                              .ToList();
+
+            if (!dumped && dumpAtStart.Value)
+            {
+                dumped = true;
+                Logger.LogInfo("[InfiniteJump] Candidates = " + candidates.Count);
+                for (int i = 0; i < candidates.Count; i++)
+                {
+                    var go = candidates[i].gameObject;
+                    var typeNames = string.Join(",", go.GetComponents<MonoBehaviour>()
+                                                       .Where(m => m != null)
+                                                       .Select(m => m.GetType().Name)
+                                                       .Distinct());
+                    Logger.LogInfo("  [" + (i + 1) + "] " + go.name +
+                                   " vel=" + candidates[i].linearVelocity.magnitude.ToString("F2") +
+                                   " comps=[" + typeNames + "]");
+                }
+            }
+
+            if (candIndex >= 0 && candIndex < candidates.Count && candidates[candIndex] != null)
+            {
+                rb = candidates[candIndex];
+            }
+            else
+            {
+                rb = null;
+                candIndex = -1;
+            }
+        }
+
+        private void CycleCandidate(int dir)
+        {
+            if (candidates == null || candidates.Count == 0)
+            {
+                Logger.LogInfo("[InfiniteJump] No candidates to cycle.");
+                return;
+            }
+            if (candIndex < 0) candIndex = 0;
+            else candIndex = (candIndex + dir + candidates.Count) % candidates.Count;
+
+            SetHook(candIndex);
+        }
+
+        private void SetHook(int idx)
+        {
+            candIndex = Mathf.Clamp(idx, 0, candidates.Count - 1);
+            rb = candidates[candIndex];
+            Logger.LogInfo("[InfiniteJump] Hooked Rigidbody2D on: " + rb.gameObject.name +
+                           " (cand " + (candIndex + 1) + "/" + candidates.Count + ")");
+        }
+    }
+}
+

@@ -1,0 +1,27 @@
+Setting up BepInEx
+
+BepInEx is basically an open framework modding tool. It works with games using the Unity engine.
+
+***IMPORTANT*** You have to use Proton for this to work, I use GE-PROTON10-10. 
+
+You may also need to add the following line in your Launch Options block: WINEDLLOVERRIDES="winhttp=n,b" %command%
+
+STEP 1: Get the latest release of BepInEx at:  https://github.com/BepInEx/BepInEx/releases
+
+-- Download the zip file.
+
+STEP 2: Extract the files from the zip into the Silksong main directory in your steam/steamapps/common/silksong directory.
+
+STEP 3: Launch the game and log back out soon as you get past the loading screen and you're at the main menu.
+
+STEP 4: Go to your steam/steamapps/common/silksong director and open your BepInEx folder and see if there is a "config" and "plugins" folders have been created. Also, make sure the LogOutPut.log file has been generated. The log file should be generated in the main Silksong directory.
+
+***If the folders and log file isn't there, make sure you are using Proton and the command listed on line 7 above***
+
+Once it is good to go, you simply drop your dll mods into the "Plugin" directory (Silksong/BepInEx/plugins) and start the game.
+
+You can get mods from Thunderstore.io as well as making your own. 
+
+
+
+
