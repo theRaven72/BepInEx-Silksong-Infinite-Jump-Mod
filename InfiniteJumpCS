@@ -1,5 +1,3 @@
-InfiniteJump.cs using gedit
-
 using BepInEx;
 using BepInEx.Configuration;
 using UnityEngine;
